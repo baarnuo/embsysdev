@@ -1,3 +1,7 @@
+/*Pistetavoite 1-2. Tehtävistä tehty osat yksi ja kaksi, 
+jotka oikeuttaisivat kahteen pisteeseen, mutta palautus 
+tehty myöhässä hankalan elämäntilanteen vuoksi.*/
+
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>

@@ -1,6 +1,4 @@
-/*Pistetavoite 1-2. Tehtävistä tehty osat yksi ja kaksi, 
-jotka oikeuttaisivat kahteen pisteeseen, mutta palautus 
-tehty myöhässä hankalan elämäntilanteen vuoksi.*/
+/*Pistetavoite 1-2.*/
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -28,19 +26,17 @@ K_THREAD_DEFINE(green_thread,STACKSIZE,green_led_task,NULL,NULL,NULL,PRIORITY,0,
 
 // Configure buttons
 #define BUTTON_0 DT_ALIAS(sw0)
-// #define BUTTON_1 DT_ALIAS(sw1)
 static const struct gpio_dt_spec button_0 = GPIO_DT_SPEC_GET_OR(BUTTON_0, gpios, {0});
 static struct gpio_callback button_0_data;
 
 enum state {
-	NONE,
 	RED,
 	YELLOW,
 	GREEN,
 	PAUSE
 };
 
-volatile enum state state = NONE;
+volatile enum state state = RED;
 volatile enum state prev_state = RED;
 
 enum direction {
@@ -66,10 +62,15 @@ struct data_t {
 static void dispatcher_task(void *, void *, void *);
 static void uart_task(void *, void *, void *);
 
-K_THREAD_DEFINE(dis_thread,STACKSIZE,dispatcher_task,NULL,NULL,NULL,PRIORITY,0,0);
-K_THREAD_DEFINE(uart_thread,STACKSIZE,uart_task,NULL,NULL,NULL,PRIORITY,0,0);
+#define UART_PRIORITY 10
 
-int release = 0;
+K_THREAD_DEFINE(dis_thread,STACKSIZE,dispatcher_task,NULL,NULL,NULL,UART_PRIORITY,0,0);
+K_THREAD_DEFINE(uart_thread,STACKSIZE,uart_task,NULL,NULL,NULL,UART_PRIORITY,0,0);
+
+K_SEM_DEFINE(red_sem, 0, 1);
+K_SEM_DEFINE(yellow_sem, 0, 1);
+K_SEM_DEFINE(green_sem, 0, 1);
+K_SEM_DEFINE(release_sem, 0, 1);
 
 // Main program
 int main(void)
@@ -77,7 +78,6 @@ int main(void)
 	init_uart();
 	init_led();
 	init_button();
-
 
 	return 0;
 }
@@ -135,7 +135,6 @@ static void uart_task(void *unused1, void *unused2, void *unused3)
 		}
 		k_msleep(10);
 	}
-	return 0;
 }
 
 static void dispatcher_task(void *unused1, void *unused2, void *unused3)
@@ -152,24 +151,22 @@ static void dispatcher_task(void *unused1, void *unused2, void *unused3)
 		for (int i=0; i < strlen(sequence); i++) {
 			switch (sequence[i]) {
 				case 'R':
-				case 'r':
-					state = RED;
+					k_sem_give(&red_sem);
+					k_sem_take(&release_sem, K_FOREVER);
 					break;
 				case 'Y':
-				case 'y':
-					state = YELLOW;
+					k_sem_give(&yellow_sem);
+					k_sem_take(&release_sem, K_FOREVER);
 					break;
 				case 'G':
-				case 'g':
-					state = GREEN;
+					k_sem_give(&green_sem);
+					k_sem_take(&release_sem, K_FOREVER);
 					break;
 				default:
 					printk("Invalid character\n");
 					break;
 			}
-			
 		}
-		state = NONE;
         // You need to:
         // Parse color and time from the fifo data
         // Example
@@ -268,109 +265,39 @@ void red_led_task(void *, void *, void*) {
 	
 	printk("Red led thread started\n");
 	while (true) {
-		if (state == RED) {
-			gpio_pin_set_dt(&red,1);
-			k_msleep(1000);
-			gpio_pin_set_dt(&red,0);
-		}
-		k_msleep(100);
-	}	
-	//while (true) {
-	//	if (state == PAUSE) {
-    //    	k_msleep(100);
-    //    	continue;
-    //	}
-	//	if (state == RED) {
-	//		gpio_pin_set_dt(&red,1);
-	//		//printk("Red on\n");
-	//		k_sleep(K_SECONDS(1));
-	//		if (state == PAUSE){
-	//			while (state == PAUSE){
-	//				k_msleep(100);
-	//			}
-	//		}
-	//		gpio_pin_set_dt(&red,0);
-	//		//printk("Red off\n");
-	//		state = YELLOW;
-	//		direction = DOWN;
-	//	}
-	//	k_msleep(100);
-	//}
+		k_sem_take(&red_sem, K_FOREVER);
+		gpio_pin_set_dt(&red,1);
+		k_msleep(1000);
+		gpio_pin_set_dt(&red,0);
+		k_sem_give(&release_sem);
+	}
 }
 
 // Task to handle yellow led
 void yellow_led_task(void *, void *, void*) {
 	
 	printk("Yellow led thread started\n");
-	//while (true) {
-	//	if (state == YELLOW) {
-	//		gpio_pin_set_dt(&red,1);
-	//		gpio_pin_set_dt(&green,1);
-	//		k_sleep(K_SECONDS(1));
-	//		gpio_pin_set_dt(&red,0);
-	//		gpio_pin_set_dt(&green,0);
-	//		release = 1;
-	//	}
-	//}
-	//while (true) {
-	//	if (state == PAUSE) {
-    //    	k_msleep(100);
-    //    	continue;
-    //	}
-	//	if (state == YELLOW) {
-	//		gpio_pin_set_dt(&red,1);
-	//		gpio_pin_set_dt(&green,1);
-	//		//printk("yellow on\n");
-	//		k_sleep(K_SECONDS(1));
-	//		if (state == PAUSE){
-	//			while (state == PAUSE){
-	//				k_msleep(100);
-	//			}
-	//		}
-	//		gpio_pin_set_dt(&red,0);
-	//		gpio_pin_set_dt(&green,0);
-	//		//printk("yellow off\n");
-	//		state = GREEN;
-	//		if (direction == UP) {
-	//			state = RED;
-	//		}
-	//	}	
-	//	k_msleep(100);
-	//}
+	while (true) {
+		k_sem_take(&yellow_sem, K_FOREVER);
+		gpio_pin_set_dt(&red,1);
+		gpio_pin_set_dt(&green,1);
+		k_msleep(1000);
+		gpio_pin_set_dt(&red,0);
+		gpio_pin_set_dt(&green,0);
+		k_sem_give(&release_sem);
+	}
 }
 
 // Task to handle green led
 void green_led_task(void *, void *, void*) {
 	
 	printk("Green led thread started\n");
-	if (state == GREEN) {
+	while (true) {
+		k_sem_take(&green_sem, K_FOREVER);
 		gpio_pin_set_dt(&green,1);
-		k_sleep(K_SECONDS(1));
+		k_msleep(1000);
 		gpio_pin_set_dt(&green,0);
-		release = 1;
+		k_sem_give(&release_sem);
 	}
-	//while (true) {
-	//	if (state == PAUSE) {
-    //    	k_msleep(100);
-    //    	continue;
-    //	}
-	//	if (state == GREEN) {
-	//		gpio_pin_set_dt(&green,1);
-	//		//printk("Green on\n");
-	//		k_sleep(K_SECONDS(1));
-	//		if (state == PAUSE){
-	//			while (state == PAUSE){
-	//				k_msleep(100);
-	//			}
-	//		}
-	//		gpio_pin_set_dt(&green,0);
-	//		//printk("Green off\n");
-	//		direction = UP;
-	//		if (direction == UP) {
-	//			state = YELLOW;
-	//		}
-	//	}
-	//	k_msleep(100);
-	//}
 }
 

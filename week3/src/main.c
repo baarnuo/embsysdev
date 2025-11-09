@@ -1,4 +1,7 @@
-/*Pistetavoite 1-2.*/
+/*Pistetavoite 1-2. 1 pisteen suoritus ainakin toimii. 
+Refaktorointi jäi vähän auki, että kattaako tämä sen.
+Ainakin ledejä ohjataan nyt vain sarjaportin kautta syötetyillä sekvensseillä 
+ja semaphoreilla.*/
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -23,28 +26,6 @@ void green_led_task(void *, void *, void*);
 K_THREAD_DEFINE(red_thread,STACKSIZE,red_led_task,NULL,NULL,NULL,PRIORITY,0,0);
 K_THREAD_DEFINE(yellow_thread,STACKSIZE,yellow_led_task,NULL,NULL,NULL,PRIORITY,0,0);
 K_THREAD_DEFINE(green_thread,STACKSIZE,green_led_task,NULL,NULL,NULL,PRIORITY,0,0);
-
-// Configure buttons
-#define BUTTON_0 DT_ALIAS(sw0)
-static const struct gpio_dt_spec button_0 = GPIO_DT_SPEC_GET_OR(BUTTON_0, gpios, {0});
-static struct gpio_callback button_0_data;
-
-enum state {
-	RED,
-	YELLOW,
-	GREEN,
-	PAUSE
-};
-
-volatile enum state state = RED;
-volatile enum state prev_state = RED;
-
-enum direction {
-	UP,
-	DOWN
-};
-
-volatile enum direction direction = DOWN;
 
 // UART initialization
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
@@ -77,7 +58,6 @@ int main(void)
 {
 	init_uart();
 	init_led();
-	init_button();
 
 	return 0;
 }
@@ -167,61 +147,7 @@ static void dispatcher_task(void *unused1, void *unused2, void *unused3)
 					break;
 			}
 		}
-        // You need to:
-        // Parse color and time from the fifo data
-        // Example
-        //    char color = sequence[0];
-        //    int time = atoi(sequence+2);
-		//    printk("Data: %c %d\n", color, time);
-        // Send the parsed color information to tasks using fifo
-        // Use release signal to control sequence or k_yield
 	}
-}
-
-
-
-// Button interrupt handler
-void button_0_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
-{
-	if (state != PAUSE) {
-		prev_state = state;
-		state = PAUSE;
-		printk("PAUSED\n");
-	} 
-	else {
-		state = prev_state;
-		printk("RESUMED\n");
-	}
-
-	printk("Button pressed\n");
-}
-
-// Button initialization
-int init_button() {
-
-	int ret;
-	if (!gpio_is_ready_dt(&button_0)) {
-		printk("Error: button 0 is not ready\n");
-		return -1;
-	}
-
-	ret = gpio_pin_configure_dt(&button_0, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error: failed to configure pin\n");
-		return -1;
-	}
-
-	ret = gpio_pin_interrupt_configure_dt(&button_0, GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error: failed to configure interrupt on pin\n");
-		return -1;
-	}
-
-	gpio_init_callback(&button_0_data, button_0_handler, BIT(button_0.pin));
-	gpio_add_callback(button_0.port, &button_0_data);
-	printk("Set up button 0 ok\n");
-	
-	return 0;
 }
 
 // Initialize leds

@@ -17,7 +17,7 @@ ${lenght_error}		-1
 
 *** Test Cases ***
 Connect Serial
-	Log To Console  Connecting to  ${board}
+	Log To Console  Connecting to ${board}
 	Add Port  ${com}  baudrate=${baud}  encoding=ascii
 	Port Should Be Open  ${com}
 	Reset Input Buffer
